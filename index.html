@@ -78,6 +78,138 @@
       <div class="outer">
         <section id="main">
   
+    <article id="post-Fanuc真實手臂與Rviz仿真" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/2025/02/13/Fanuc%E7%9C%9F%E5%AF%A6%E6%89%8B%E8%87%82%E8%88%87Rviz%E4%BB%BF%E7%9C%9F/" class="article-date">
+  <time class="dt-published" datetime="2025-02-13T02:14:53.000Z" itemprop="datePublished">2025-02-13</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="p-name article-title" href="/2025/02/13/Fanuc%E7%9C%9F%E5%AF%A6%E6%89%8B%E8%87%82%E8%88%87Rviz%E4%BB%BF%E7%9C%9F/">Fanuc真實手臂與Rviz仿真</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <h1 id="FANUC-J2-x2F-J3-干涉補償機制-重大發現與解釋"><a href="#FANUC-J2-x2F-J3-干涉補償機制-重大發現與解釋" class="headerlink" title="FANUC J2&#x2F;J3 干涉補償機制 - 重大發現與解釋"></a><strong>FANUC J2&#x2F;J3 干涉補償機制 - 重大發現與解釋</strong></h1><p>在 FANUC 機械手臂中，J2 (第二關節) 和 J3 (第三關節) 之間<strong>存在內部補償機制</strong>，這個機制影響了關節的真實運動方式，而這在 ROS2 RViz2 的運動學計算中 <strong>並不會自動呈現</strong>，因此造成了<strong>仿真與真實手臂的姿態不匹配</strong>。</p>
+<hr>
+<h2 id="🔍-問題發現"><a href="#🔍-問題發現" class="headerlink" title="🔍 問題發現"></a><strong>🔍 問題發現</strong></h2><ul>
+<li>當你透過 <strong>SQL 資料庫讀取 FANUC 機械手臂的即時 J1~J6 角度</strong> 並同步到 <strong>RViz2</strong> 時，發現 <strong>RViz2 顯示的手臂姿態與真實手臂不同</strong>。</li>
+<li>即使你確保了 <strong>ROS2 Joint State 的數值與 FANUC 控制器讀取的數值一致</strong>，仍然發現 <strong>RViz2 手臂姿態錯誤</strong>，這代表 <strong>某些額外的運動學補償機制影響了 FANUC 手臂的顯示</strong>。</li>
+</ul>
+<hr>
+<h2 id="🔧-發現-J2-x2F-J3-互補機制"><a href="#🔧-發現-J2-x2F-J3-互補機制" class="headerlink" title="🔧 發現 J2&#x2F;J3 互補機制"></a><strong>🔧 發現 J2&#x2F;J3 互補機制</strong></h2><ul>
+<li><p>在 <strong>FANUC 控制器 (示教器&#x2F;Robot Controller)</strong> 上，當你查看 J3 (第三關節) 的角度時，你會發現：</p>
+<ul>
+<li><strong>實際的 J3 馬達角度 &#x3D; (FANUC 顯示角度) + (J2 當前角度)</strong></li>
+<li>這表示 <strong>FANUC 內部進行了 J3 軸的補償，但這個補償值沒有顯示在 FANUC 控制器的 Joint 值上</strong>。</li>
+</ul>
+</li>
+<li><p><strong>反過來，在 RViz2 內部運動學計算中，這個補償機制並不存在</strong>，因此：</p>
+<ul>
+<li><strong>如果你想讓 RViz2 的手臂姿態與真實 FANUC 手臂一致，則需要手動補償 J3 軸</strong></li>
+<li><strong>J3 在 RViz2 中應該 &#x3D; (FANUC 讀取的 J3 值) + (FANUC 讀取的 J2 值)</strong></li>
+</ul>
+</li>
+</ul>
+<hr>
+<h2 id="⚙️-為什麼-FANUC-需要-J2-x2F-J3-互補機制？"><a href="#⚙️-為什麼-FANUC-需要-J2-x2F-J3-互補機制？" class="headerlink" title="⚙️ 為什麼 FANUC 需要 J2&#x2F;J3 互補機制？"></a><strong>⚙️ 為什麼 FANUC 需要 J2&#x2F;J3 互補機制？</strong></h2><p>1️⃣ <strong>避免奇異點 (Singularity Avoidance)</strong>  </p>
+<ul>
+<li>FANUC 機械手臂在某些 J2 角度範圍內，會出現奇異點問題 (例如 J2 變大時 J3 可能失去控制)，為了確保控制穩定性，FANUC 內部會讓 <strong>J3 自動補償 J2 的變化</strong>，來減少這種影響。</li>
+</ul>
+<p>2️⃣ <strong>運動學穩定性 (Kinematic Stability)</strong>  </p>
+<ul>
+<li>當 J2 轉動時，如果 J3 <strong>完全不動</strong>，手臂的運動可能會變得不穩定，甚至導致機械臂結構的額外應力。因此，FANUC 透過 J2&#x2F;J3 互補來平衡運動學行為。</li>
+</ul>
+<p>3️⃣ <strong>維持 TCP (Tool Center Point) 姿態不變</strong>  </p>
+<ul>
+<li>FANUC 控制器的內部運動學計算<strong>優先確保 TCP 姿態不變</strong>，因此 J3 會根據 J2 的變化自動進行調整。</li>
+</ul>
+<hr>
+<h2 id="🛠-如何讓-RViz2-顯示正確的姿態？"><a href="#🛠-如何讓-RViz2-顯示正確的姿態？" class="headerlink" title="🛠 如何讓 RViz2 顯示正確的姿態？"></a><strong>🛠 如何讓 RViz2 顯示正確的姿態？</strong></h2><p>由於 <strong>RViz2 的運動學計算不會自動進行 J2&#x2F;J3 補償</strong>，你需要<strong>手動修正</strong> <code>/joint_states</code> 的數值，使其與 FANUC 手臂匹配。</p>
+<h3 id="📌-Python-代碼修正"><a href="#📌-Python-代碼修正" class="headerlink" title="📌 Python 代碼修正"></a><strong>📌 Python 代碼修正</strong></h3><p>你可以透過 <strong>ROS2 Node</strong> 訂閱 <code>/joint_states</code> 並進行補償後重新發布：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="keyword">import</span> rclpy</span><br><span class="line"><span class="keyword">from</span> rclpy.node <span class="keyword">import</span> Node</span><br><span class="line"><span class="keyword">from</span> sensor_msgs.msg <span class="keyword">import</span> JointState</span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">FanucJointCompensator</span>(<span class="title class_ inherited__">Node</span>):</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="built_in">super</span>().__init__(<span class="string">&#x27;fanuc_joint_compensator&#x27;</span>)</span><br><span class="line">        self.subscription = self.create_subscription(</span><br><span class="line">            JointState,</span><br><span class="line">            <span class="string">&#x27;/joint_states&#x27;</span>,</span><br><span class="line">            self.joint_callback,</span><br><span class="line">            <span class="number">10</span>)</span><br><span class="line">        self.publisher = self.create_publisher(JointState, <span class="string">&#x27;/joint_states_corrected&#x27;</span>, <span class="number">10</span>)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">joint_callback</span>(<span class="params">self, msg</span>):</span><br><span class="line">        new_msg = JointState()</span><br><span class="line">        new_msg.header = msg.header</span><br><span class="line">        new_msg.name = msg.name</span><br><span class="line">        new_msg.position = <span class="built_in">list</span>(msg.position)</span><br><span class="line"></span><br><span class="line">        <span class="comment"># 進行 J2/J3 補償</span></span><br><span class="line">        j2_angle = msg.position[<span class="number">1</span>]  <span class="comment"># J2</span></span><br><span class="line">        j3_angle = msg.position[<span class="number">2</span>]  <span class="comment"># J3 (FANUC 讀取的值)</span></span><br><span class="line">        </span><br><span class="line">        <span class="comment"># 修正 J3 (使其與 FANUC 真實運動一致)</span></span><br><span class="line">        new_msg.position[<span class="number">2</span>] = j3_angle + j2_angle  <span class="comment"># 修正 J3</span></span><br><span class="line"></span><br><span class="line">        <span class="comment"># 發布修正後的 joint_states</span></span><br><span class="line">        self.publisher.publish(new_msg)</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">main</span>(<span class="params">args=<span class="literal">None</span></span>):</span><br><span class="line">    rclpy.init(args=args)</span><br><span class="line">    node = FanucJointCompensator()</span><br><span class="line">    rclpy.spin(node)</span><br><span class="line">    node.destroy_node()</span><br><span class="line">    rclpy.shutdown()</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> __name__ == <span class="string">&#x27;__main__&#x27;</span>:</span><br><span class="line">    main()</span><br></pre></td></tr></table></figure>
+
+<p>這樣，你可以訂閱 &#x2F;joint_states，然後將 J3 軸的值進行 J2 角度補償，並發布到新的 &#x2F;joint_states_corrected，讓 RViz2 顯示的機械手臂姿態與 FANUC 真實手臂一致。</p>
+<p>🔚 結論<br>🎯 你發現的關鍵點<br>1️⃣ FANUC 內部有一個 J2&#x2F;J3 干涉補償機制，當 J2 轉動時，J3 會自動補償，但這個補償並不反映在 Joint 角度上。<br>2️⃣ FANUC 讀取的 J3 角度並不是馬達的實際 J3 角度，而是經過補償後的顯示值。<br>3️⃣ 在 ROS2 RViz2 中，J3 並不會自動補償 J2 的影響，因此你需要手動補償 (J3 +&#x3D; J2) 才能讓 RViz2 顯示與真實手臂一致的姿態。<br>4️⃣ 這個發現可以幫助你未來解決 FANUC 運動學與 ROS2 運動學不匹配的問題，讓仿真與真實機械手臂一致。</p>
+<p>這個發現非常關鍵，因為如果你不知道 FANUC 的這種內部補償機制，你可能會一直認為 RViz2 或 FANUC 手臂的運動學計算有錯誤，但實際上這是 FANUC 控制器內部的補償機制導致的結果。</p>
+<p>透過 手動補償 J3 角度，你現在可以讓 RViz2 和 FANUC 真實手臂的運動行為完全同步！ 🎯</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://sjctyjin.github.io/2025/02/13/Fanuc%E7%9C%9F%E5%AF%A6%E6%89%8B%E8%87%82%E8%88%87Rviz%E4%BB%BF%E7%9C%9F/" data-id="cm72povm60000x0u26aqq1m6b" data-title="Fanuc真實手臂與Rviz仿真" class="article-share-link">Share</a>
+      
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+
+  
+    <article id="post-hello-world" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/2025/02/13/hello-world/" class="article-date">
+  <time class="dt-published" datetime="2025-02-13T02:04:37.199Z" itemprop="datePublished">2025-02-13</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="p-name article-title" href="/2025/02/13/hello-world/">Hello World</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <p>Welcome to <a target="_blank" rel="noopener" href="https://hexo.io/">Hexo</a>! This is your very first post. Check <a target="_blank" rel="noopener" href="https://hexo.io/docs/">documentation</a> for more info. If you get any problems when using Hexo, you can find the answer in <a target="_blank" rel="noopener" href="https://hexo.io/docs/troubleshooting.html">troubleshooting</a> or you can ask me on <a target="_blank" rel="noopener" href="https://github.com/hexojs/hexo/issues">GitHub</a>.</p>
+<h2 id="Quick-Start"><a href="#Quick-Start" class="headerlink" title="Quick Start"></a>Quick Start</h2><h3 id="Create-a-new-post"><a href="#Create-a-new-post" class="headerlink" title="Create a new post"></a>Create a new post</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo new <span class="string">&quot;My New Post&quot;</span></span><br></pre></td></tr></table></figure>
+
+<p>More info: <a target="_blank" rel="noopener" href="https://hexo.io/docs/writing.html">Writing</a></p>
+<h3 id="Run-server"><a href="#Run-server" class="headerlink" title="Run server"></a>Run server</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo server</span><br></pre></td></tr></table></figure>
+
+<p>More info: <a target="_blank" rel="noopener" href="https://hexo.io/docs/server.html">Server</a></p>
+<h3 id="Generate-static-files"><a href="#Generate-static-files" class="headerlink" title="Generate static files"></a>Generate static files</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo generate</span><br></pre></td></tr></table></figure>
+
+<p>More info: <a target="_blank" rel="noopener" href="https://hexo.io/docs/generating.html">Generating</a></p>
+<h3 id="Deploy-to-remote-sites"><a href="#Deploy-to-remote-sites" class="headerlink" title="Deploy to remote sites"></a>Deploy to remote sites</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo deploy</span><br></pre></td></tr></table></figure>
+
+<p>More info: <a target="_blank" rel="noopener" href="https://hexo.io/docs/one-command-deployment.html">Deployment</a></p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://sjctyjin.github.io/2025/02/13/hello-world/" data-id="cm72povmb0003x0u2hogk7bes" data-title="Hello World" class="article-share-link">Share</a>
+      
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+
+  
     <article id="post-曼陀羅九宮格思考法" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
   <div class="article-meta">
     <a href="/2024/02/21/%E6%9B%BC%E9%99%80%E7%BE%85%E4%B9%9D%E5%AE%AE%E6%A0%BC%E6%80%9D%E8%80%83%E6%B3%95/" class="article-date">
@@ -122,7 +254,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://sjctyjin.github.io/2024/02/21/%E6%9B%BC%E9%99%80%E7%BE%85%E4%B9%9D%E5%AE%AE%E6%A0%BC%E6%80%9D%E8%80%83%E6%B3%95/" data-id="clsv669ow0005j8u2cfiibdod" data-title="曼陀羅九宮格思考法" class="article-share-link">Share</a>
+      <a data-url="https://sjctyjin.github.io/2024/02/21/%E6%9B%BC%E9%99%80%E7%BE%85%E4%B9%9D%E5%AE%AE%E6%A0%BC%E6%80%9D%E8%80%83%E6%B3%95/" data-id="cm72povmc0006x0u27we14mbz" data-title="曼陀羅九宮格思考法" class="article-share-link">Share</a>
       
       
       
@@ -178,7 +310,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://sjctyjin.github.io/2024/02/19/%E5%B0%88%E5%88%A9rodamap/" data-id="clsv669ov0003j8u20ghq6y7s" data-title="專利rodamap" class="article-share-link">Share</a>
+      <a data-url="https://sjctyjin.github.io/2024/02/19/%E5%B0%88%E5%88%A9rodamap/" data-id="cm72povmc0005x0u2ffhq9rok" data-title="專利rodamap" class="article-share-link">Share</a>
       
       
       
@@ -219,7 +351,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://sjctyjin.github.io/2023/11/03/IIS%E9%83%A8%E5%B1%AC%E6%99%82%E7%99%BC%E7%94%9Fx86%E6%87%89%E7%94%A8%E7%A8%8B%E5%BC%8F%E4%B8%8D%E7%AC%A6%E5%90%8864%E4%BD%8D%E5%85%83%E4%BD%BF%E7%94%A8/" data-id="clsv669or0000j8u28kqr1998" data-title="IIS部屬時發生x86應用程式不符合64位元使用" class="article-share-link">Share</a>
+      <a data-url="https://sjctyjin.github.io/2023/11/03/IIS%E9%83%A8%E5%B1%AC%E6%99%82%E7%99%BC%E7%94%9Fx86%E6%87%89%E7%94%A8%E7%A8%8B%E5%BC%8F%E4%B8%8D%E7%AC%A6%E5%90%8864%E4%BD%8D%E5%85%83%E4%BD%BF%E7%94%A8/" data-id="cm72povm90001x0u2a42o1te3" data-title="IIS部屬時發生x86應用程式不符合64位元使用" class="article-share-link">Share</a>
       
       
       
@@ -337,7 +469,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://sjctyjin.github.io/2023/06/28/NX%E5%AE%89%E8%A3%9D%E7%B4%80%E9%8C%84/" data-id="clsv669ov0002j8u24lld3rdq" data-title="NX安裝紀錄" class="article-share-link">Share</a>
+      <a data-url="https://sjctyjin.github.io/2023/06/28/NX%E5%AE%89%E8%A3%9D%E7%B4%80%E9%8C%84/" data-id="cm72povma0002x0u2gpuf2nll" data-title="NX安裝紀錄" class="article-share-link">Share</a>
       
       
       
@@ -405,7 +537,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://sjctyjin.github.io/2022/12/22/%E6%AA%A2%E6%B8%AC%E5%9C%93%E6%98%AF%E5%90%A6%E8%B6%85%E5%87%BA%E5%9F%BA%E6%BA%96%E7%B7%9A%E8%BC%B8%E5%87%BA%E8%A3%9C%E6%AD%A3%E5%80%BC/" data-id="clsv669ox0006j8u2d6ss8i6h" data-title="檢測圓是否超出基準線輸出補正值" class="article-share-link">Share</a>
+      <a data-url="https://sjctyjin.github.io/2022/12/22/%E6%AA%A2%E6%B8%AC%E5%9C%93%E6%98%AF%E5%90%A6%E8%B6%85%E5%87%BA%E5%9F%BA%E6%BA%96%E7%B7%9A%E8%BC%B8%E5%87%BA%E8%A3%9C%E6%AD%A3%E5%80%BC/" data-id="cm72povmd0007x0u23g8ggbqy" data-title="檢測圓是否超出基準線輸出補正值" class="article-share-link">Share</a>
       
       
       
@@ -511,58 +643,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://sjctyjin.github.io/2022/11/23/Yolov5-doc/" data-id="clsv669ow0004j8u2cuax9kjl" data-title="Yolov5 Setting and Training" class="article-share-link">Share</a>
-      
-      
-      
-    </footer>
-  </div>
-  
-</article>
-
-
-
-  
-    <article id="post-hello-world" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
-  <div class="article-meta">
-    <a href="/2022/11/23/hello-world/" class="article-date">
-  <time class="dt-published" datetime="2022-11-23T06:10:51.629Z" itemprop="datePublished">2022-11-23</time>
-</a>
-    
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="p-name article-title" href="/2022/11/23/hello-world/">Hello World</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="e-content article-entry" itemprop="articleBody">
-      
-        <p>Welcome to <a target="_blank" rel="noopener" href="https://hexo.io/">Hexo</a>! This is your very first post. Check <a target="_blank" rel="noopener" href="https://hexo.io/docs/">documentation</a> for more info. If you get any problems when using Hexo, you can find the answer in <a target="_blank" rel="noopener" href="https://hexo.io/docs/troubleshooting.html">troubleshooting</a> or you can ask me on <a target="_blank" rel="noopener" href="https://github.com/hexojs/hexo/issues">GitHub</a>.</p>
-<h2 id="Quick-Start"><a href="#Quick-Start" class="headerlink" title="Quick Start"></a>Quick Start</h2><h3 id="Create-a-new-post"><a href="#Create-a-new-post" class="headerlink" title="Create a new post"></a>Create a new post</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo new <span class="string">&quot;My New Post&quot;</span></span><br></pre></td></tr></table></figure>
-
-<p>More info: <a target="_blank" rel="noopener" href="https://hexo.io/docs/writing.html">Writing</a></p>
-<h3 id="Run-server"><a href="#Run-server" class="headerlink" title="Run server"></a>Run server</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo server</span><br></pre></td></tr></table></figure>
-
-<p>More info: <a target="_blank" rel="noopener" href="https://hexo.io/docs/server.html">Server</a></p>
-<h3 id="Generate-static-files"><a href="#Generate-static-files" class="headerlink" title="Generate static files"></a>Generate static files</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo generate</span><br></pre></td></tr></table></figure>
-
-<p>More info: <a target="_blank" rel="noopener" href="https://hexo.io/docs/generating.html">Generating</a></p>
-<h3 id="Deploy-to-remote-sites"><a href="#Deploy-to-remote-sites" class="headerlink" title="Deploy to remote sites"></a>Deploy to remote sites</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo deploy</span><br></pre></td></tr></table></figure>
-
-<p>More info: <a target="_blank" rel="noopener" href="https://hexo.io/docs/one-command-deployment.html">Deployment</a></p>
-
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="https://sjctyjin.github.io/2022/11/23/hello-world/" data-id="clsv669ot0001j8u2bl8bctcf" data-title="Hello World" class="article-share-link">Share</a>
+      <a data-url="https://sjctyjin.github.io/2022/11/23/Yolov5-doc/" data-id="cm72povmc0004x0u25pxlaa0l" data-title="Yolov5 Setting and Training" class="article-share-link">Share</a>
       
       
       
@@ -592,7 +673,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">彙整</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2024/02/">二月 2024</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2023/11/">十一月 2023</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2023/06/">六月 2023</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2022/12/">十二月 2022</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2022/11/">十一月 2022</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2025/02/">二月 2025</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2024/02/">二月 2024</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2023/11/">十一月 2023</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2023/06/">六月 2023</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2022/12/">十二月 2022</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2022/11/">十一月 2022</a></li></ul>
     </div>
   </div>
 
@@ -605,6 +686,14 @@
       <ul>
         
           <li>
+            <a href="/2025/02/13/Fanuc%E7%9C%9F%E5%AF%A6%E6%89%8B%E8%87%82%E8%88%87Rviz%E4%BB%BF%E7%9C%9F/">Fanuc真實手臂與Rviz仿真</a>
+          </li>
+        
+          <li>
+            <a href="/2025/02/13/hello-world/">Hello World</a>
+          </li>
+        
+          <li>
             <a href="/2024/02/21/%E6%9B%BC%E9%99%80%E7%BE%85%E4%B9%9D%E5%AE%AE%E6%A0%BC%E6%80%9D%E8%80%83%E6%B3%95/">曼陀羅九宮格思考法</a>
           </li>
         
@@ -614,14 +703,6 @@
         
           <li>
             <a href="/2023/11/03/IIS%E9%83%A8%E5%B1%AC%E6%99%82%E7%99%BC%E7%94%9Fx86%E6%87%89%E7%94%A8%E7%A8%8B%E5%BC%8F%E4%B8%8D%E7%AC%A6%E5%90%8864%E4%BD%8D%E5%85%83%E4%BD%BF%E7%94%A8/">IIS部屬時發生x86應用程式不符合64位元使用</a>
-          </li>
-        
-          <li>
-            <a href="/2023/06/28/NX%E5%AE%89%E8%A3%9D%E7%B4%80%E9%8C%84/">NX安裝紀錄</a>
-          </li>
-        
-          <li>
-            <a href="/2022/12/22/%E6%AA%A2%E6%B8%AC%E5%9C%93%E6%98%AF%E5%90%A6%E8%B6%85%E5%87%BA%E5%9F%BA%E6%BA%96%E7%B7%9A%E8%BC%B8%E5%87%BA%E8%A3%9C%E6%AD%A3%E5%80%BC/">檢測圓是否超出基準線輸出補正值</a>
           </li>
         
       </ul>
@@ -637,7 +718,7 @@
   <div class="outer">
     <div id="footer-info" class="inner">
       
-      &copy; 2024 Jim Shiu<br>
+      &copy; 2025 Jim Shiu<br>
       Powered by <a href="https://hexo.io/" target="_blank">Hexo</a>
     </div>
   </div>
